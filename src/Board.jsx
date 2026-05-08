@@ -3,9 +3,9 @@ import RowHints from './hints/RowHints';
 import ColHints from './hints/ColHints';
 import Cell from './Cell';
 import { getHints, checkWin } from './utils';
-import Menu from '../menu/Menu';
+import Menu from './menu/Menu';
 
-const Board = ({ solution, initialItems, onExit }) => {
+const Board = ({ solution, initialItems, onExit, onWin }) => {
 
     const size = solution.length;
     const [grid, setGrid] = useState(Array(solution.length).fill().map(() => Array(solution.length).fill(0)));
@@ -13,6 +13,10 @@ const Board = ({ solution, initialItems, onExit }) => {
     const [dotHints, setDotHints] = useState(initialItems.dotHints);
     const [lineHints, setLineHints] = useState(initialItems.lineHints);
     const [gameState, setGameState] = useState('PLAYING');
+
+    // 드래그 관련 상태
+    const [isDragging, setIsDragging] = useState(false);
+    const [dragMode, setDragMode] = useState(null); // 1: 색칠, 2: X, 0: 지우기
 
     const rowHints = solution.map(row => getHints(row));
     const colHints = Array(size).fill().map((_, i) => getHints(solution.map(row => row[i])));
@@ -56,17 +60,7 @@ const Board = ({ solution, initialItems, onExit }) => {
         setGrid(newGrid);
     };
 
-    // 승리 조건 체크
-    useEffect(() => {
-      if (gameState === 'PLAYING' && checkWin(grid, solution)) {
-        setGameState('WON');
-      }
-    }, [grid, solution, gameState]);
-
-    // 라이프 체크
-    useEffect(() => {
-        if (lives <= 0) setGameState('LOST');
-    }, [lives]);
+    
 
     // 셀 클릭 핸들러 (useCallback으로 최적화)
     const handleCellClick = useCallback((r, c, e) => {
@@ -94,6 +88,25 @@ const Board = ({ solution, initialItems, onExit }) => {
         }
     }, [gameState, solution, grid]);
 
+    const handleCellAction = useCallback((r, c, type) => {
+        // 이미 색칠된 정답은 수정 불가하게 하거나, 자유 모드라면 토글 로직 적용
+        setGrid(prev => {
+            const newGrid = prev.map(row => [...row]);
+            
+            // 드래그 도중 현재 셀의 상태가 이미 목표 상태와 같다면 업데이트 방지
+            if (newGrid[r][c] === type) return prev;
+
+            // 정답 체크 로직 (실수 시 라이프 차감 로직을 여기에 결합 가능)
+            if (type === 1 && solution[r][c] !== 1) {
+            // 드래그 중에는 alert이 계속 뜨면 안 되므로 별도 처리 권장
+            return prev; 
+            }
+            
+            newGrid[r][c] = type;
+            return newGrid;
+        });
+    }, [solution]);
+
     const useHint = () => {
         if (hintsLeft <= 0 || gameState !== 'PLAYING') return;
         
@@ -114,12 +127,55 @@ const Board = ({ solution, initialItems, onExit }) => {
         }
     };
 
+    // 마우스 클릭 시작
+    const onMouseDown = (r, c, e) => {
+        e.preventDefault();
+        setIsDragging(true);
+        
+        let mode;
+        if (e.button === 2) { // 우클릭
+        mode = grid[r][c] === 2 ? 0 : 2;
+        } else { // 좌클릭
+        mode = grid[r][c] === 1 ? 0 : 1;
+        }
+        
+        setDragMode(mode);
+        handleCellAction(r, c, mode);
+    };
+
+    // 마우스 이동 중 (다른 셀로 진입)
+    const onMouseEnter = (r, c) => {
+        if (!isDragging) return;
+        handleCellAction(r, c, dragMode);
+    };
+
     const restartGame = () => {
         setGrid(Array(size).fill().map(() => Array(size).fill(0)));
         setLives(3);
         setHintsLeft(3);
         setGameState('PLAYING');
     };
+
+    // 승리 조건 체크
+    // Board 내부의 useEffect 승리 체크 로직 수정
+    useEffect(() => {
+        if (gameState === 'PLAYING' && checkWin(grid, solution)) {
+        setGameState('WON');
+        onWin(); // 부모 컴포넌트의 코인 지급 함수 호출
+        }
+    }, [grid, solution, gameState, onWin]);
+
+    // 라이프 체크
+    useEffect(() => {
+        if (lives <= 0) setGameState('LOST');
+    }, [lives]);
+
+    // 마우스를 뗄 때 드래그 종료
+    useEffect(() => {
+        const handleGlobalMouseUp = () => setIsDragging(false);
+        window.addEventListener('mouseup', handleGlobalMouseUp);
+        return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
+    }, []);
 
     return (
         <div className={`game-container`}>
@@ -134,11 +190,12 @@ const Board = ({ solution, initialItems, onExit }) => {
                 <ColHints colHints={colHints} />
                 <div className="main-area">
                 <RowHints rowHints={rowHints} />
-                <div className="grid">
+                <div className="grid" onContextMenu={(e) => e.preventDefault()}>
                     {grid.map((row, r) => (
                     <div key={r} className="grid-row">
                         {row.map((val, c) => (
-                        <Cell key={`${r}-${c}`} r={r} c={c} value={val} onClick={handleCellClick} />
+                        <Cell key={`${r}-${c}`} r={r} c={c} value={val} onClick={handleCellClick} onMouseDown={onMouseDown} 
+                        onMouseEnter={onMouseEnter} />
                         ))}
                     </div>
                     ))}

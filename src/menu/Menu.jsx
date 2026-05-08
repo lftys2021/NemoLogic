@@ -14,10 +14,10 @@ const Menu = ({ onStart, onShop, type = 'MAIN', onGoHome }) => {
         
         <div className="menu-buttons">
           <button className="btn-primary" onClick={onStart}>
-            {type === 'MAIN' ? '게임 시작' : '다시 도전'}
+            {type === 'MAIN' ? '▶️' : '🔄'}
           </button>
           {type === 'MAIN' ? 
-            <button className="btn-shop" onClick={onShop}>상점 이용</button> : <button onClick={onGoHome}>메인으로</button>
+            <button className="btn-shop" onClick={onShop}>🛒</button> : <button onClick={onGoHome}>🏠</button>
           }
         </div>
       </div>
